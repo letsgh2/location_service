@@ -9,7 +9,7 @@
 |---|---|---|---|
 | [Building](#building) | `building` | 4 | 1 |
 | [Features](#features) | `features` | 7 | 1 |
-| [Location](#location) | `location` | 8 | 1 |
+| [Location](#location) | `location` | 9 | 1 |
 | [Owner](#owner) | `owner` | 5 | 1 |
 | [User](#user) | `user` | 4 | 0 |
 | [Listing](#listing) | `listing` | 15 | 4 |
@@ -42,6 +42,7 @@ erDiagram
         VARCHAR(500) full_address
         FLOAT latitude
         FLOAT longitude
+        TEXT description
     }
     owner {
         INTEGER owner_id PK
@@ -114,7 +115,7 @@ Relacje:
 
 ## Location
 
-Tabela `location`. Kolumn: 8, relacji: 1.
+Tabela `location`. Kolumn: 9, relacji: 1.
 
 | Kolumna | Typ | Null | Klucz | Uwagi |
 |---|---|---|---|---|
@@ -126,6 +127,7 @@ Tabela `location`. Kolumn: 8, relacji: 1.
 | `full_address` | VARCHAR(500) | tak |  |  |
 | `latitude` | FLOAT | tak |  |  |
 | `longitude` | FLOAT | tak |  |  |
+| `description` | TEXT | tak |  |  |
 
 Relacje:
 

@@ -24,6 +24,7 @@ class Location(Base):
     full_address = Column(String(500))
     latitude = Column(Float)
     longitude = Column(Float)
+    description = Column(Text, nullable=True)
 
     # Relationship
     listings = relationship("Listing", back_populates="location")
