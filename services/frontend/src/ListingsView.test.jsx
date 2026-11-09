@@ -49,15 +49,29 @@ describe('ListingsView', () => {
     expect(screen.queryByTestId('results-truncated')).toBeNull()
   })
 
-  it('tells the user when the table shows fewer rows than the count', async () => {
+  it('tells the user when the table is truncated to PAGE_SIZE rows', async () => {
+    const page = Array.from({ length: PAGE_SIZE }, (_, i) => ({ ...LISTING, listing_id: i + 1 }))
+    api.listListings.mockResolvedValue(page)
     api.countListings.mockResolvedValue({ count: 250 })
 
     render(<ListingsView />)
 
     expect((await screen.findByTestId('results-truncated')).textContent).toBe(
-      'Pokazano pierwsze 1. Zawęź filtry, aby zobaczyć pozostałe.',
+      ' Pokazano pierwsze 100. Zawęź filtry, aby zobaczyć pozostałe.',
     )
     expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 250 ofert')
+    expect(screen.getByTestId('results-truncated').closest('[aria-live]')).toBeTruthy()
+  })
+
+  it('shows no truncation note when count and list disagree below the limit', async () => {
+    // Lista i licznik to osobne zapytania; w międzyczasie mogła dojść oferta.
+    api.listListings.mockResolvedValue([])
+    api.countListings.mockResolvedValue({ count: 1 })
+
+    render(<ListingsView />)
+
+    expect(await screen.findByText('Brak ofert')).toBeTruthy()
+    expect(screen.queryByTestId('results-truncated')).toBeNull()
   })
 
   it('shows empty state', async () => {
@@ -118,19 +132,18 @@ describe('ListingsView', () => {
 })
 
 describe('ListingsView race conditions', () => {
-  afterEach(() => {
-    cleanup()
-    vi.clearAllMocks()
-    vi.useRealTimers()
-  })
+  const deferred = () => {
+    let resolve, reject
+    const promise = new Promise((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
 
-  it('ignores a stale response that arrives after a newer one', async () => {
-    const deferred = () => {
-      let resolve
-      const promise = new Promise((r) => (resolve = r))
-      return { promise, resolve }
-    }
-    // Mocki celowo ignorują signal, jak klient, który nie odrzuca po abort.
+  // Mocki celowo ignorują signal, jak klient, który nie odrzuca po abort.
+  // Zwraca odroczone odpowiedzi: [0] dla pierwszego zapytania, [1] dla zapytania po zmianie filtrów.
+  async function renderWithTwoRequests() {
     const lists = [deferred(), deferred()]
     const counts = [deferred(), deferred()]
     api.listListings.mockImplementationOnce(() => lists[0].promise).mockImplementationOnce(() => lists[1].promise)
@@ -146,6 +159,12 @@ describe('ListingsView race conditions', () => {
       lists[1].resolve([{ ...LISTING, listing_id: 2 }])
       counts[1].resolve({ count: 1 })
     })
+    return { lists, counts }
+  }
+
+  it('ignores a stale response that arrives after a newer one', async () => {
+    const { lists, counts } = await renderWithTwoRequests()
+
     await act(async () => {
       lists[0].resolve([{ ...LISTING, listing_id: 1 }, { ...LISTING, listing_id: 9 }])
       counts[0].resolve({ count: 2 })
@@ -154,5 +173,17 @@ describe('ListingsView race conditions', () => {
     expect(screen.getByText('#2')).toBeTruthy()
     expect(screen.queryByText('#1')).toBeNull()
     expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 1 oferta')
+  })
+
+  it('ignores a stale error that arrives after a newer response', async () => {
+    const { lists, counts } = await renderWithTwoRequests()
+
+    await act(async () => {
+      lists[0].reject(new Error('HTTP 500'))
+      counts[0].resolve({ count: 2 })
+    })
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('#2')).toBeTruthy()
   })
 })

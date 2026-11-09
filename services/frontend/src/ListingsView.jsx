@@ -132,14 +132,17 @@ export default function ListingsView({ onLogout, onShowLocations }) {
           </table>
         </div>
         <div className="table-foot">
-          <span aria-live="polite" data-testid="results-count">
-            {count === null ? '' : `Znaleziono ${offersLabel(count)}`}
-          </span>
-          {count !== null && count > rows.length && (
-            <span data-testid="results-truncated">
-              Pokazano pierwsze {rows.length}. Zawęź filtry, aby zobaczyć pozostałe.
+          <div aria-live="polite">
+            <span data-testid="results-count">
+              {count === null ? '' : `Znaleziono ${offersLabel(count)}`}
             </span>
-          )}
+            {/* Lista i licznik to osobne zapytania: komunikat tylko przy faktycznym przycięciu do limitu. */}
+            {count !== null && rows.length >= PAGE_SIZE && count > rows.length && (
+              <span data-testid="results-truncated">
+                {' '}Pokazano pierwsze {rows.length}. Zawęź filtry, aby zobaczyć pozostałe.
+              </span>
+            )}
+          </div>
         </div>
       </section>
     </div>
