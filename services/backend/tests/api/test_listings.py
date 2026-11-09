@@ -1,3 +1,6 @@
+import pytest
+
+
 async def test_list_listings_empty(client):
     response = await client.get("/listings/")
 
@@ -43,3 +46,61 @@ async def test_list_listings_pagination(client, make_listing):
 async def test_list_listings_rejects_invalid_pagination(client):
     assert (await client.get("/listings/", params={"limit": 501})).status_code == 422
     assert (await client.get("/listings/", params={"skip": -1})).status_code == 422
+
+
+RANGES = [
+    ("price_total_min", "price_total_max", "price_total_zl"),
+    ("price_sqm_min", "price_sqm_max", "price_sqm_zl"),
+    ("area_min", "area_max", "area"),
+]
+
+
+async def _ids(client, **params):
+    response = await client.get("/listings/", params=params)
+    assert response.status_code == 200, response.text
+    return [item["listing_id"] for item in response.json()]
+
+
+@pytest.mark.parametrize("min_name,max_name,field", RANGES)
+async def test_range_filter_bounds_are_inclusive(client, make_listing, min_name, max_name, field):
+    low = await make_listing(**{field: 100})
+    mid = await make_listing(**{field: 200})
+    high = await make_listing(**{field: 300})
+
+    assert await _ids(client, **{min_name: 200}) == [mid.listing_id, high.listing_id]
+    assert await _ids(client, **{max_name: 200}) == [low.listing_id, mid.listing_id]
+    assert await _ids(client, **{min_name: 150, max_name: 300}) == [mid.listing_id, high.listing_id]
+    assert await _ids(client, **{min_name: 200, max_name: 200}) == [mid.listing_id]
+
+
+async def test_range_filters_combine(client, make_listing):
+    match = await make_listing(price_total_zl=500000, area=50)
+    await make_listing(price_total_zl=500000, area=90)
+    await make_listing(price_total_zl=900000, area=50)
+
+    ids = await _ids(client, price_total_max=600000, area_max=60)
+
+    assert ids == [match.listing_id]
+
+
+async def test_null_value_excluded_only_when_filter_active(client, make_listing):
+    without_price = await make_listing(price_total_zl=None)
+    with_price = await make_listing(price_total_zl=400000)
+
+    assert await _ids(client) == [without_price.listing_id, with_price.listing_id]
+    assert await _ids(client, price_total_min=0) == [with_price.listing_id]
+
+
+@pytest.mark.parametrize("param", [name for pair in RANGES for name in pair[:2]])
+async def test_negative_range_value_returns_422(client, param):
+    response = await client.get("/listings/", params={param: -1})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("min_name,max_name,_field", RANGES)
+async def test_min_greater_than_max_returns_422(client, min_name, max_name, _field):
+    response = await client.get("/listings/", params={min_name: 10, max_name: 5})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == f"{min_name} must be <= {max_name}"

@@ -1,10 +1,11 @@
 import jwt
+from dataclasses import dataclass
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from sql_app.database import get_db
 from sql_app import models, schemas
 from sql_app.security import (
@@ -185,15 +186,72 @@ async def delete_location(
 
 
 # Listing endpoints
+@dataclass
+class ListingFilters:
+    price_total_min: Optional[float] = None
+    price_total_max: Optional[float] = None
+    price_sqm_min: Optional[float] = None
+    price_sqm_max: Optional[float] = None
+    area_min: Optional[float] = None
+    area_max: Optional[float] = None
+
+
+# (nazwa parametru min, nazwa parametru max, kolumna)
+RANGE_FILTERS = (
+    ("price_total_min", "price_total_max", models.Listing.price_total_zl),
+    ("price_sqm_min", "price_sqm_max", models.Listing.price_sqm_zl),
+    ("area_min", "area_max", models.Listing.area),
+)
+
+
+def listing_filters(
+    price_total_min: Optional[float] = Query(None, ge=0),
+    price_total_max: Optional[float] = Query(None, ge=0),
+    price_sqm_min: Optional[float] = Query(None, ge=0),
+    price_sqm_max: Optional[float] = Query(None, ge=0),
+    area_min: Optional[float] = Query(None, ge=0),
+    area_max: Optional[float] = Query(None, ge=0),
+) -> ListingFilters:
+    # FastAPI 0.104 nie obsługuje modeli parametrów Query, stąd zależność-funkcja.
+    f = ListingFilters(
+        price_total_min=price_total_min,
+        price_total_max=price_total_max,
+        price_sqm_min=price_sqm_min,
+        price_sqm_max=price_sqm_max,
+        area_min=area_min,
+        area_max=area_max,
+    )
+    for min_name, max_name, _column in RANGE_FILTERS:
+        low, high = getattr(f, min_name), getattr(f, max_name)
+        if low is not None and high is not None and low > high:
+            raise HTTPException(
+                status_code=422, detail=f"{min_name} must be <= {max_name}"
+            )
+    return f
+
+
+def apply_listing_filters(stmt, f: ListingFilters):
+    # Rekordy z NULL w filtrowanej kolumnie odpadają, gdy filtr jest aktywny.
+    for min_name, max_name, column in RANGE_FILTERS:
+        low, high = getattr(f, min_name), getattr(f, max_name)
+        if low is not None:
+            stmt = stmt.where(column >= low)
+        if high is not None:
+            stmt = stmt.where(column <= high)
+    return stmt
+
+
 @app.get("/listings/", response_model=List[schemas.ListingSummary])
 async def read_listings(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    f: ListingFilters = Depends(listing_filters),
     db: AsyncSession = Depends(get_db),
 ):
     # selectinload: bez niego serializacja listing.location w sesji async rzuca MissingGreenlet
+    stmt = apply_listing_filters(select(models.Listing), f)
     stmt = (
-        select(models.Listing)
+        stmt
         .options(selectinload(models.Listing.location))
         .order_by(models.Listing.listing_id)
         .offset(skip)
