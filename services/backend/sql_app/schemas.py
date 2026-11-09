@@ -119,6 +119,28 @@ class ListingDetail(Listing):
     features: Optional[Features] = None
 
 
+# Listing list / filters
+class LocationSummary(BaseModel):
+    city: Optional[str] = None
+    city_district: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ListingSummary(BaseModel):
+    listing_id: int
+    rooms: Optional[int] = None
+    area: Optional[float] = None
+    price_total_zl: Optional[float] = None
+    price_sqm_zl: Optional[float] = None
+    location: LocationSummary
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ListingCount(BaseModel):
+    count: int
+
 
 # Auth schemas
 class UserCreate(BaseModel):
