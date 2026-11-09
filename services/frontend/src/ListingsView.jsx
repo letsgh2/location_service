@@ -6,6 +6,8 @@ import { Icon } from './ui.jsx'
 
 const cell = (v) => (v ?? '') === '' ? <span className="empty">—</span> : v
 export const DEBOUNCE_MS = 300
+// Ile wierszy pobiera tabela; licznik pokazuje pełną liczbę wyników.
+export const PAGE_SIZE = 100
 
 const fmt = (n, suffix) => (n == null ? null : `${n.toLocaleString('pl-PL')} ${suffix}`)
 
@@ -36,7 +38,7 @@ export default function ListingsView({ onLogout, onShowLocations }) {
     const controller = new AbortController()
     const { signal } = controller
     setLoading(true)
-    Promise.all([listListings(applied, { signal }), countListings(applied, { signal })])
+    Promise.all([listListings(applied, { signal, limit: PAGE_SIZE }), countListings(applied, { signal })])
       .then(([items, { count }]) => {
         // Nie polegamy tylko na odrzuceniu fetch po abort: spóźniona odpowiedź nie może nadpisać nowszej.
         if (signal.aborted) return
@@ -133,6 +135,11 @@ export default function ListingsView({ onLogout, onShowLocations }) {
           <span aria-live="polite" data-testid="results-count">
             {count === null ? '' : `Znaleziono ${offersLabel(count)}`}
           </span>
+          {count !== null && count > rows.length && (
+            <span data-testid="results-truncated">
+              Pokazano pierwsze {rows.length}. Zawęź filtry, aby zobaczyć pozostałe.
+            </span>
+          )}
         </div>
       </section>
     </div>

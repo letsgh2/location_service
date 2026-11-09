@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import ListingsView, { DEBOUNCE_MS } from './ListingsView.jsx'
+import ListingsView, { DEBOUNCE_MS, PAGE_SIZE } from './ListingsView.jsx'
 import * as api from './api.js'
 import { EMPTY_FILTERS } from './filterQuery.js'
 
@@ -39,6 +39,25 @@ describe('ListingsView', () => {
     expect(screen.getByText('Kraków')).toBeTruthy()
     expect(screen.getByText('Podgórze')).toBeTruthy()
     expect((await screen.findByTestId('results-count')).textContent).toBe('Znaleziono 1 oferta')
+  })
+
+  it('requests PAGE_SIZE rows and has no truncation note when all fit', async () => {
+    render(<ListingsView />)
+
+    await screen.findByText('#7')
+    expect(api.listListings).toHaveBeenCalledWith(EMPTY_FILTERS, expect.objectContaining({ limit: PAGE_SIZE }))
+    expect(screen.queryByTestId('results-truncated')).toBeNull()
+  })
+
+  it('tells the user when the table shows fewer rows than the count', async () => {
+    api.countListings.mockResolvedValue({ count: 250 })
+
+    render(<ListingsView />)
+
+    expect((await screen.findByTestId('results-truncated')).textContent).toBe(
+      'Pokazano pierwsze 1. Zawęź filtry, aby zobaczyć pozostałe.',
+    )
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 250 ofert')
   })
 
   it('shows empty state', async () => {
