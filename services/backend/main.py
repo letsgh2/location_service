@@ -1,6 +1,6 @@
 import jwt
 from dataclasses import dataclass
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, distinct, func
 from sqlalchemy.orm import selectinload
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -296,3 +296,48 @@ async def count_listings(
 ):
     stmt = apply_listing_filters(select(func.count()).select_from(models.Listing), f)
     return schemas.ListingCount(count=await db.scalar(stmt))
+
+
+# Podpowiedzi dla autouzupełniania. Trasy pod /listings/, bo /locations/cities złapałoby
+# /locations/{location_id}. Przy dodaniu /listings/{listing_id} deklarować je wcześniej.
+def _prefix_pattern(q: str) -> str:
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"{escaped}%"
+
+
+async def _suggest(db: AsyncSession, column, q: Optional[str], limit: int, city: Optional[str] = None):
+    # Tylko wartości, które mają oferty, więc podpowiedź zawsze daje wyniki.
+    stmt = (
+        select(distinct(column))
+        .select_from(models.Location)
+        .join(models.Location.listings)
+        .where(column.is_not(None))
+    )
+    q = (q or "").strip()
+    if q:
+        stmt = stmt.where(column.ilike(_prefix_pattern(q), escape="\\"))
+    if city:
+        stmt = stmt.where(models.Location.city == city)
+    result = await db.execute(stmt.order_by(column).limit(limit))
+    return result.scalars().all()
+
+
+@app.get("/listings/cities", response_model=List[str])
+async def suggest_cities(
+    q: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _suggest(db, models.Location.city, q, limit)
+
+
+@app.get("/listings/districts", response_model=List[str])
+async def suggest_districts(
+    q: Optional[str] = Query(None, max_length=100),
+    city: Optional[str] = Query(None, max_length=255),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _suggest(
+        db, models.Location.city_district, q, limit, city=(city or "").strip() or None
+    )
