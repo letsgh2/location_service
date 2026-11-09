@@ -1,6 +1,6 @@
 # Frontend
 
-Simple web UI for the [monorepo](../../README.md), built with **React + Vite** (JavaScript). It currently manages `Location` records (list, add, delete) – the only CRUD implemented in the backend so far.
+Simple web UI for the [monorepo](../../README.md), built with **React + Vite** (JavaScript). It manages `Location` records (list, add, delete) and has a listings view (switch with the „Oferty” / „Lokalizacje” buttons) with filters: total price, price per m² and area ranges, multi-select rooms, city and district with autocomplete, a live result counter and a reset button.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Other scripts: `npm run build` (production bundle in `dist/`), `npm run preview`.
+Other scripts: `npm test` (Vitest + Testing Library in jsdom, `*.test.js(x)` next to sources), `npm run build` (production bundle in `dist/`), `npm run preview`.
 
 ## Backend connection
 
@@ -34,7 +34,11 @@ index.html
 vite.config.js      # React plugin + /api proxy
 src/
 ├── main.jsx        # entry point
-├── App.jsx         # locations list + add form
+├── App.jsx         # locations list + add form, switch to the listings view
+├── ListingsView.jsx   # listings table + result counter (debounced, abortable fetches)
+├── ListingFilters.jsx # filter panel: ranges, rooms, city/district, reset
+├── useSuggestions.js  # debounced autocomplete hook (<datalist>)
+├── filterQuery.js  # filter state → query params, validation, Polish plural for the counter
 ├── api.js          # fetch wrapper for the backend
 └── App.css
 ```
