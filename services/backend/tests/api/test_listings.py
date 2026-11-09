@@ -104,3 +104,42 @@ async def test_min_greater_than_max_returns_422(client, min_name, max_name, _fie
 
     assert response.status_code == 422
     assert response.json()["detail"] == f"{min_name} must be <= {max_name}"
+
+
+async def test_rooms_single_and_multi_select(client, make_listing):
+    one = await make_listing(rooms=1)
+    two = await make_listing(rooms=2)
+    three = await make_listing(rooms=3)
+
+    assert await _ids(client, rooms=2) == [two.listing_id]
+    assert await _ids(client, rooms=[2, 3]) == [two.listing_id, three.listing_id]
+    assert await _ids(client, rooms=[3, 1, 3]) == [one.listing_id, three.listing_id]
+
+
+@pytest.mark.parametrize("rooms", [0, 21, -1])
+async def test_rooms_out_of_range_returns_422(client, rooms):
+    response = await client.get("/listings/", params={"rooms": rooms})
+
+    assert response.status_code == 422
+
+
+async def test_city_and_district_exact_match(client, make_listing):
+    podgorze = await make_listing(city="Kraków", city_district="Podgórze")
+    krowodrza = await make_listing(city="Kraków", city_district="Krowodrza")
+    await make_listing(city="Łódź", city_district="Bałuty")
+
+    assert await _ids(client, city="Kraków") == [podgorze.listing_id, krowodrza.listing_id]
+    assert await _ids(client, city="Kraków", city_district="Podgórze") == [podgorze.listing_id]
+    assert await _ids(client, city="Gdańsk") == []
+    assert await _ids(client, city="  ") == await _ids(client)
+
+
+async def test_location_filter_combines_with_ranges_and_rooms(client, make_listing):
+    match = await make_listing(city="Łódź", rooms=2, price_total_zl=300000)
+    await make_listing(city="Łódź", rooms=2, price_total_zl=700000)
+    await make_listing(city="Łódź", rooms=3, price_total_zl=300000)
+    await make_listing(city="Kraków", rooms=2, price_total_zl=300000)
+
+    ids = await _ids(client, city="Łódź", rooms=2, price_total_max=500000)
+
+    assert ids == [match.listing_id]

@@ -194,6 +194,12 @@ class ListingFilters:
     price_sqm_max: Optional[float] = None
     area_min: Optional[float] = None
     area_max: Optional[float] = None
+    rooms: Optional[List[int]] = None
+    city: Optional[str] = None
+    city_district: Optional[str] = None
+
+
+ROOMS_MIN, ROOMS_MAX = 1, 20
 
 
 # (nazwa parametru min, nazwa parametru max, kolumna)
@@ -211,6 +217,9 @@ def listing_filters(
     price_sqm_max: Optional[float] = Query(None, ge=0),
     area_min: Optional[float] = Query(None, ge=0),
     area_max: Optional[float] = Query(None, ge=0),
+    rooms: Optional[List[int]] = Query(None),
+    city: Optional[str] = Query(None, max_length=255),
+    city_district: Optional[str] = Query(None, max_length=255),
 ) -> ListingFilters:
     # FastAPI 0.104 nie obsługuje modeli parametrów Query, stąd zależność-funkcja.
     f = ListingFilters(
@@ -220,7 +229,17 @@ def listing_filters(
         price_sqm_max=price_sqm_max,
         area_min=area_min,
         area_max=area_max,
+        # Puste po strip() traktujemy jak brak filtra.
+        city=(city or "").strip() or None,
+        city_district=(city_district or "").strip() or None,
     )
+    if rooms:
+        if any(not ROOMS_MIN <= r <= ROOMS_MAX for r in rooms):
+            raise HTTPException(
+                status_code=422,
+                detail=f"rooms must be between {ROOMS_MIN} and {ROOMS_MAX}",
+            )
+        f.rooms = sorted(set(rooms))
     for min_name, max_name, _column in RANGE_FILTERS:
         low, high = getattr(f, min_name), getattr(f, max_name)
         if low is not None and high is not None and low > high:
@@ -238,6 +257,15 @@ def apply_listing_filters(stmt, f: ListingFilters):
             stmt = stmt.where(column >= low)
         if high is not None:
             stmt = stmt.where(column <= high)
+    if f.rooms:
+        stmt = stmt.where(models.Listing.rooms.in_(f.rooms))
+    # Dopasowanie dokładne: SQLite lower() obniża tylko ASCII, więc "Łódź" nie zadziała case-insensitive.
+    if f.city or f.city_district:
+        stmt = stmt.join(models.Listing.location)
+        if f.city:
+            stmt = stmt.where(models.Location.city == f.city)
+        if f.city_district:
+            stmt = stmt.where(models.Location.city_district == f.city_district)
     return stmt
 
 
