@@ -287,3 +287,12 @@ async def read_listings(
     )
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@app.get("/listings/count", response_model=schemas.ListingCount)
+async def count_listings(
+    f: ListingFilters = Depends(listing_filters),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = apply_listing_filters(select(func.count()).select_from(models.Listing), f)
+    return schemas.ListingCount(count=await db.scalar(stmt))

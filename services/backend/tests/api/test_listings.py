@@ -143,3 +143,26 @@ async def test_location_filter_combines_with_ranges_and_rooms(client, make_listi
     ids = await _ids(client, city="Łódź", rooms=2, price_total_max=500000)
 
     assert ids == [match.listing_id]
+
+
+async def test_count_empty(client):
+    response = await client.get("/listings/count")
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 0}
+
+
+async def test_count_matches_filtered_list_and_ignores_pagination(client, make_listing):
+    for rooms, city in [(1, "Kraków"), (2, "Kraków"), (2, "Łódź"), (3, "Kraków")]:
+        await make_listing(rooms=rooms, city=city, price_total_zl=100000 * rooms)
+    params = {"city": "Kraków", "rooms": [2, 3], "price_total_min": 150000}
+
+    count = (await client.get("/listings/count", params={**params, "limit": 1})).json()["count"]
+
+    assert count == len(await _ids(client, **params, limit=500)) == 2
+
+
+async def test_count_validates_filters(client):
+    response = await client.get("/listings/count", params={"area_min": 80, "area_max": 40})
+
+    assert response.status_code == 422
