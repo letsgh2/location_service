@@ -38,12 +38,14 @@ export default function ListingsView({ onLogout, onShowLocations }) {
     setLoading(true)
     Promise.all([listListings(applied, { signal }), countListings(applied, { signal })])
       .then(([items, { count }]) => {
+        // Nie polegamy tylko na odrzuceniu fetch po abort: spóźniona odpowiedź nie może nadpisać nowszej.
+        if (signal.aborted) return
         setRows(items)
         setCount(count)
         setError(null)
       })
       .catch((e) => {
-        if (e.name !== 'AbortError') setError(`Nie udało się pobrać ofert: ${e.message}`)
+        if (!signal.aborted && e.name !== 'AbortError') setError(`Nie udało się pobrać ofert: ${e.message}`)
       })
       .finally(() => {
         if (!signal.aborted) setLoading(false)

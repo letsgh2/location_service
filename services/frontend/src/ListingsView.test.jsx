@@ -97,3 +97,43 @@ describe('ListingsView', () => {
     expect(screen.getByRole('button', { name: '2' }).getAttribute('aria-pressed')).toBe('false')
   })
 })
+
+describe('ListingsView race conditions', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('ignores a stale response that arrives after a newer one', async () => {
+    const deferred = () => {
+      let resolve
+      const promise = new Promise((r) => (resolve = r))
+      return { promise, resolve }
+    }
+    // Mocki celowo ignorują signal, jak klient, który nie odrzuca po abort.
+    const lists = [deferred(), deferred()]
+    const counts = [deferred(), deferred()]
+    api.listListings.mockImplementationOnce(() => lists[0].promise).mockImplementationOnce(() => lists[1].promise)
+    api.countListings.mockImplementationOnce(() => counts[0].promise).mockImplementationOnce(() => counts[1].promise)
+
+    render(<ListingsView />)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    await act(async () => vi.advanceTimersByTime(DEBOUNCE_MS))
+    expect(api.listListings).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      lists[1].resolve([{ ...LISTING, listing_id: 2 }])
+      counts[1].resolve({ count: 1 })
+    })
+    await act(async () => {
+      lists[0].resolve([{ ...LISTING, listing_id: 1 }, { ...LISTING, listing_id: 9 }])
+      counts[0].resolve({ count: 2 })
+    })
+
+    expect(screen.getByText('#2')).toBeTruthy()
+    expect(screen.queryByText('#1')).toBeNull()
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 1 oferta')
+  })
+})
