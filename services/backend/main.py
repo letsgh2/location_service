@@ -1,6 +1,7 @@
 import jwt
 from sqlalchemy import select, delete, func
-from fastapi import FastAPI, Depends, HTTPException, status
+from sqlalchemy.orm import selectinload
+from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -181,3 +182,22 @@ async def delete_location(
         delete(models.Location).where(models.Location.location_id == location_id)
     )
     await db.commit()
+
+
+# Listing endpoints
+@app.get("/listings/", response_model=List[schemas.ListingSummary])
+async def read_listings(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    # selectinload: bez niego serializacja listing.location w sesji async rzuca MissingGreenlet
+    stmt = (
+        select(models.Listing)
+        .options(selectinload(models.Listing.location))
+        .order_by(models.Listing.listing_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
