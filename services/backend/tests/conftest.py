@@ -62,3 +62,26 @@ async def auth_client(client):
     )
     client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
     return client
+
+
+@pytest_asyncio.fixture
+def make_listing(db):
+    """Fabryka ofert: tworzy Location + wymagane FK (Building/Owner/Features) i Listing."""
+
+    async def _make(city=None, city_district=None, **listing_fields):
+        location = models.Location(city=city, city_district=city_district)
+        building, owner, features = models.Building(), models.Owner(), models.Features()
+        db.add_all([location, building, owner, features])
+        await db.flush()
+        listing = models.Listing(
+            location_id=location.location_id,
+            building_id=building.building_id,
+            owner_id=owner.owner_id,
+            features_id=features.features_id,
+            **listing_fields,
+        )
+        db.add(listing)
+        await db.commit()
+        return listing
+
+    return _make

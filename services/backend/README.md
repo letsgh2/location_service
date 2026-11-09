@@ -4,7 +4,7 @@ This is the backend service (`services/backend/`). Run all commands below from t
 
 A real-estate listings API built with **FastAPI**, **SQLAlchemy (async)** and **SQLite**, with schema migrations managed by **Alembic**.
 
-> **Status:** early development. Only the `Location` resource has full CRUD endpoints. The remaining models (`Building`, `Owner`, `Features`, `Listing`) are defined in the database layer and Pydantic schemas, but have no API endpoints yet.
+> **Status:** early development. The `Location` resource has full CRUD endpoints; `Listing` has read-only endpoints (filtered list, result count, city/district suggestions). `Building`, `Owner` and `Features` are defined in the database layer and Pydantic schemas, but have no API endpoints yet.
 
 ## Tech stack
 
@@ -89,6 +89,17 @@ The API is available at <http://127.0.0.1:8000>. Interactive documentation is ge
 | `DELETE` | `/locations/{location_id}` | Delete a location (auth required) | `204`, `401`, `404`, `409` |
 
 `DELETE` returns `409 Conflict` when the location is still referenced by one or more listings.
+
+#### Listings (public, read-only)
+
+| Method | Path | Description | Responses |
+| --- | --- | --- | --- |
+| `GET` | `/listings/` | Filtered list of `ListingSummary` (`skip` ≥ 0, `limit` 1–500, default `100`), ordered by `listing_id` | `200`, `422` |
+| `GET` | `/listings/count` | `{"count": n}` for the same filters (ignores `skip`/`limit`) | `200`, `422` |
+| `GET` | `/listings/cities` | City suggestions: `q` (case-insensitive prefix, ASCII), `limit` 1–50 (default `10`) | `200`, `422` |
+| `GET` | `/listings/districts` | District suggestions: `q`, optional `city` (exact), `limit` 1–50 | `200`, `422` |
+
+Filters (all optional, combined with AND): `price_total_min`/`price_total_max`, `price_sqm_min`/`price_sqm_max`, `area_min`/`area_max` (inclusive, ≥ 0), `rooms` (repeatable, 1–20: `?rooms=2&rooms=3`), `city`, `city_district` (exact match). A negative bound, `min > max` or `rooms` out of range returns `422` (for `min > max` the `detail` is a string, e.g. `"area_min must be <= area_max"`). Listings with `NULL` in a filtered column are excluded while that filter is active. Suggestions only return values that have at least one listing.
 
 ### Authentication
 

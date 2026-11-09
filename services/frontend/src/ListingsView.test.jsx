@@ -1,0 +1,189 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import ListingsView, { DEBOUNCE_MS, PAGE_SIZE } from './ListingsView.jsx'
+import * as api from './api.js'
+import { EMPTY_FILTERS } from './filterQuery.js'
+
+vi.mock('./api.js', () => ({
+  listListings: vi.fn(),
+  countListings: vi.fn(),
+  suggestCities: vi.fn(async () => []),
+  suggestDistricts: vi.fn(async () => []),
+}))
+
+const LISTING = {
+  listing_id: 7,
+  rooms: 2,
+  area: 48.5,
+  price_total_zl: 650000,
+  price_sqm_zl: 13402,
+  location: { city: 'Kraków', city_district: 'Podgórze' },
+}
+
+beforeEach(() => {
+  api.listListings.mockResolvedValue([LISTING])
+  api.countListings.mockResolvedValue({ count: 1 })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.useRealTimers()
+})
+
+describe('ListingsView', () => {
+  it('renders rows and the result counter', async () => {
+    render(<ListingsView />)
+
+    expect(await screen.findByText('#7')).toBeTruthy()
+    expect(screen.getByText('Kraków')).toBeTruthy()
+    expect(screen.getByText('Podgórze')).toBeTruthy()
+    expect((await screen.findByTestId('results-count')).textContent).toBe('Znaleziono 1 oferta')
+  })
+
+  it('requests PAGE_SIZE rows and has no truncation note when all fit', async () => {
+    render(<ListingsView />)
+
+    await screen.findByText('#7')
+    expect(api.listListings).toHaveBeenCalledWith(EMPTY_FILTERS, expect.objectContaining({ limit: PAGE_SIZE }))
+    expect(screen.queryByTestId('results-truncated')).toBeNull()
+  })
+
+  it('tells the user when the table is truncated to PAGE_SIZE rows', async () => {
+    const page = Array.from({ length: PAGE_SIZE }, (_, i) => ({ ...LISTING, listing_id: i + 1 }))
+    api.listListings.mockResolvedValue(page)
+    api.countListings.mockResolvedValue({ count: 250 })
+
+    render(<ListingsView />)
+
+    expect((await screen.findByTestId('results-truncated')).textContent).toBe(
+      ' Pokazano pierwsze 100. Zawęź filtry, aby zobaczyć pozostałe.',
+    )
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 250 ofert')
+    expect(screen.getByTestId('results-truncated').closest('[aria-live]')).toBeTruthy()
+  })
+
+  it('shows no truncation note when count and list disagree below the limit', async () => {
+    // Lista i licznik to osobne zapytania; w międzyczasie mogła dojść oferta.
+    api.listListings.mockResolvedValue([])
+    api.countListings.mockResolvedValue({ count: 1 })
+
+    render(<ListingsView />)
+
+    expect(await screen.findByText('Brak ofert')).toBeTruthy()
+    expect(screen.queryByTestId('results-truncated')).toBeNull()
+  })
+
+  it('shows empty state', async () => {
+    api.listListings.mockResolvedValue([])
+    api.countListings.mockResolvedValue({ count: 0 })
+
+    render(<ListingsView />)
+
+    expect(await screen.findByText('Brak ofert')).toBeTruthy()
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 0 ofert')
+  })
+
+  it('shows an alert when the API fails', async () => {
+    api.listListings.mockRejectedValue(new Error('HTTP 500'))
+
+    render(<ListingsView />)
+
+    expect((await screen.findByRole('alert')).textContent).toContain('HTTP 500')
+  })
+
+  it('refetches list and count with debounced filters and skips invalid ones', async () => {
+    render(<ListingsView />)
+    await screen.findByText('#7')
+    vi.useFakeTimers()
+    api.countListings.mockResolvedValue({ count: 3 })
+
+    fireEvent.change(screen.getByLabelText('Cena od'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Cena od'), { target: { value: '100' } })
+    await act(async () => vi.advanceTimersByTime(DEBOUNCE_MS))
+
+    expect(api.listListings).toHaveBeenCalledTimes(2)
+    expect(api.countListings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ price_total_min: '100' }),
+      expect.anything(),
+    )
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 3 oferty')
+
+    fireEvent.change(screen.getByLabelText('Cena do'), { target: { value: '50' } })
+    await act(async () => vi.advanceTimersByTime(DEBOUNCE_MS))
+    expect(api.listListings).toHaveBeenCalledTimes(2)
+  })
+
+  it('reset refetches immediately without filters', async () => {
+    render(<ListingsView />)
+    await screen.findByText('#7')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    await act(async () => vi.advanceTimersByTime(DEBOUNCE_MS))
+    expect(api.listListings).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wyczyść filtry' }))
+    await act(async () => {})
+
+    expect(api.listListings).toHaveBeenCalledTimes(3)
+    expect(api.listListings).toHaveBeenLastCalledWith(EMPTY_FILTERS, expect.anything())
+    expect(screen.getByRole('button', { name: '2' }).getAttribute('aria-pressed')).toBe('false')
+  })
+})
+
+describe('ListingsView race conditions', () => {
+  const deferred = () => {
+    let resolve, reject
+    const promise = new Promise((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  // Mocki celowo ignorują signal, jak klient, który nie odrzuca po abort.
+  // Zwraca odroczone odpowiedzi: [0] dla pierwszego zapytania, [1] dla zapytania po zmianie filtrów.
+  async function renderWithTwoRequests() {
+    const lists = [deferred(), deferred()]
+    const counts = [deferred(), deferred()]
+    api.listListings.mockImplementationOnce(() => lists[0].promise).mockImplementationOnce(() => lists[1].promise)
+    api.countListings.mockImplementationOnce(() => counts[0].promise).mockImplementationOnce(() => counts[1].promise)
+
+    render(<ListingsView />)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '2' }))
+    await act(async () => vi.advanceTimersByTime(DEBOUNCE_MS))
+    expect(api.listListings).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      lists[1].resolve([{ ...LISTING, listing_id: 2 }])
+      counts[1].resolve({ count: 1 })
+    })
+    return { lists, counts }
+  }
+
+  it('ignores a stale response that arrives after a newer one', async () => {
+    const { lists, counts } = await renderWithTwoRequests()
+
+    await act(async () => {
+      lists[0].resolve([{ ...LISTING, listing_id: 1 }, { ...LISTING, listing_id: 9 }])
+      counts[0].resolve({ count: 2 })
+    })
+
+    expect(screen.getByText('#2')).toBeTruthy()
+    expect(screen.queryByText('#1')).toBeNull()
+    expect(screen.getByTestId('results-count').textContent).toBe('Znaleziono 1 oferta')
+  })
+
+  it('ignores a stale error that arrives after a newer response', async () => {
+    const { lists, counts } = await renderWithTwoRequests()
+
+    await act(async () => {
+      lists[0].reject(new Error('HTTP 500'))
+      counts[0].resolve({ count: 2 })
+    })
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('#2')).toBeTruthy()
+  })
+})

@@ -14,7 +14,7 @@ source venv/bin/activate
 python -m sql_app.init_db        # create/upgrade DB: runs `alembic upgrade head`
 uvicorn main:app --reload        # run the API (docs at /docs)
 pip install -e ".[dev]"          # test deps: pytest, pytest-asyncio, httpx
-pytest -q                        # run tests (in-memory SQLite, see tests/conftest.py)
+pytest -q                        # run tests (in-memory SQLite, see tests/conftest.py; `make_listing` fixture builds a Listing with its required FKs)
 
 alembic revision --autogenerate -m "message"   # generate a migration after changing sql_app/models.py
 alembic upgrade head
@@ -25,7 +25,7 @@ Run these from `services/backend/` — `alembic.ini` and the default SQLite URL 
 
 ## Architecture
 
-- `main.py` — the whole HTTP layer: a single `FastAPI` app with route handlers written directly against `AsyncSession` (no router/service/repository layers). Currently only `Location` has CRUD endpoints (`/locations/`, PATCH for partial update, DELETE returns 409 if listings reference the location). `Building`, `Owner`, `Features` and `Listing` have models and schemas but no endpoints yet.
+- `main.py` — the whole HTTP layer: a single `FastAPI` app with route handlers written directly against `AsyncSession` (no router/service/repository layers). `Location` has CRUD endpoints (`/locations/`, PATCH for partial update, DELETE returns 409 if listings reference the location). `Listing` is read-only: `GET /listings/` and `GET /listings/count` share the `listing_filters` dependency (FastAPI 0.104 has no Query parameter models, so filters are a function dependency returning the `ListingFilters` dataclass; `min > max` raises 422) and `apply_listing_filters(stmt, f)`; `/listings/` uses `selectinload(Listing.location)` (lazy loading in async raises `MissingGreenlet`). `GET /listings/cities` and `/listings/districts` give prefix suggestions (wildcards escaped); they live under `/listings/` because `/locations/cities` would be captured by `/locations/{location_id}` — declare them before any future `/listings/{listing_id}`. City/district filters use exact `==`, since SQLite `lower()` only folds ASCII. `Building`, `Owner` and `Features` have models and schemas but no endpoints yet.
 - `sql_app/database.py` — async engine (`echo=True`), `AsyncSessionLocal` (`expire_on_commit=False`), declarative `Base`, and the `get_db` FastAPI dependency.
 - `sql_app/models.py` — SQLAlchemy models. `Listing` is the central table with non-null FKs to `location`, `building`, `owner` and `features`.
 - `sql_app/schemas.py` — Pydantic v2 schemas following a `XBase` / `XCreate` / `X` (with `from_attributes=True`) pattern; `ListingDetail` embeds the related objects. `LocationUpdate` makes every field optional and handlers apply it with `model_dump(exclude_unset=True)` for PATCH semantics.

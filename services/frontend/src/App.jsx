@@ -7,6 +7,7 @@ import {
   getToken,
   listLocations,
 } from './api.js'
+import ListingsView from './ListingsView.jsx'
 import Login from './Login.jsx'
 import { Field, Icon } from './ui.jsx'
 
@@ -40,6 +41,8 @@ const API_FIELD = {
 
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()))
+  // Widoki renderowane wyłącznie: domyślnie Lokalizacje (e2e oczekuje h1 „Lokalizacje”).
+  const [view, setView] = useState('locations')
 
   useEffect(() => {
     const onExpired = () => setAuthed(false)
@@ -56,10 +59,13 @@ export default function App() {
     setAuthed(false)
   }
 
-  return <Locations onLogout={handleLogout} />
+  if (view === 'listings') {
+    return <ListingsView onLogout={handleLogout} onShowLocations={() => setView('locations')} />
+  }
+  return <Locations onLogout={handleLogout} onShowListings={() => setView('listings')} />
 }
 
-function Locations({ onLogout }) {
+function Locations({ onLogout, onShowListings }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -196,9 +202,14 @@ function Locations({ onLogout }) {
           <h1>Lokalizacje</h1>
           <p className="subtitle">Zarządzaj adresami: miastami, miejscowościami, dzielnicami i ulicami.</p>
         </div>
-        <button type="button" className="btn btn-ghost" onClick={onLogout}>
-          Wyloguj
-        </button>
+        <div className="toolbar">
+          <button type="button" className="btn btn-ghost" onClick={onShowListings}>
+            Oferty
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onLogout}>
+            Wyloguj
+          </button>
+        </div>
       </header>
 
       {error && (

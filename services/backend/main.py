@@ -1,9 +1,11 @@
 import jwt
-from sqlalchemy import select, delete, func
-from fastapi import FastAPI, Depends, HTTPException, status
+from dataclasses import dataclass
+from sqlalchemy import select, delete, distinct, func
+from sqlalchemy.orm import selectinload
+from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from sql_app.database import get_db
 from sql_app import models, schemas
 from sql_app.security import (
@@ -181,3 +183,161 @@ async def delete_location(
         delete(models.Location).where(models.Location.location_id == location_id)
     )
     await db.commit()
+
+
+# Listing endpoints
+@dataclass
+class ListingFilters:
+    price_total_min: Optional[float] = None
+    price_total_max: Optional[float] = None
+    price_sqm_min: Optional[float] = None
+    price_sqm_max: Optional[float] = None
+    area_min: Optional[float] = None
+    area_max: Optional[float] = None
+    rooms: Optional[List[int]] = None
+    city: Optional[str] = None
+    city_district: Optional[str] = None
+
+
+ROOMS_MIN, ROOMS_MAX = 1, 20
+
+
+# (nazwa parametru min, nazwa parametru max, kolumna)
+RANGE_FILTERS = (
+    ("price_total_min", "price_total_max", models.Listing.price_total_zl),
+    ("price_sqm_min", "price_sqm_max", models.Listing.price_sqm_zl),
+    ("area_min", "area_max", models.Listing.area),
+)
+
+
+def listing_filters(
+    price_total_min: Optional[float] = Query(None, ge=0),
+    price_total_max: Optional[float] = Query(None, ge=0),
+    price_sqm_min: Optional[float] = Query(None, ge=0),
+    price_sqm_max: Optional[float] = Query(None, ge=0),
+    area_min: Optional[float] = Query(None, ge=0),
+    area_max: Optional[float] = Query(None, ge=0),
+    rooms: Optional[List[int]] = Query(None),
+    city: Optional[str] = Query(None, max_length=255),
+    city_district: Optional[str] = Query(None, max_length=255),
+) -> ListingFilters:
+    # FastAPI 0.104 nie obsługuje modeli parametrów Query, stąd zależność-funkcja.
+    f = ListingFilters(
+        price_total_min=price_total_min,
+        price_total_max=price_total_max,
+        price_sqm_min=price_sqm_min,
+        price_sqm_max=price_sqm_max,
+        area_min=area_min,
+        area_max=area_max,
+        # Puste po strip() traktujemy jak brak filtra.
+        city=(city or "").strip() or None,
+        city_district=(city_district or "").strip() or None,
+    )
+    if rooms:
+        if any(not ROOMS_MIN <= r <= ROOMS_MAX for r in rooms):
+            raise HTTPException(
+                status_code=422,
+                detail=f"rooms must be between {ROOMS_MIN} and {ROOMS_MAX}",
+            )
+        f.rooms = sorted(set(rooms))
+    for min_name, max_name, _column in RANGE_FILTERS:
+        low, high = getattr(f, min_name), getattr(f, max_name)
+        if low is not None and high is not None and low > high:
+            raise HTTPException(
+                status_code=422, detail=f"{min_name} must be <= {max_name}"
+            )
+    return f
+
+
+def apply_listing_filters(stmt, f: ListingFilters):
+    # Rekordy z NULL w filtrowanej kolumnie odpadają, gdy filtr jest aktywny.
+    for min_name, max_name, column in RANGE_FILTERS:
+        low, high = getattr(f, min_name), getattr(f, max_name)
+        if low is not None:
+            stmt = stmt.where(column >= low)
+        if high is not None:
+            stmt = stmt.where(column <= high)
+    if f.rooms:
+        stmt = stmt.where(models.Listing.rooms.in_(f.rooms))
+    # Dopasowanie dokładne: SQLite lower() obniża tylko ASCII, więc "Łódź" nie zadziała case-insensitive.
+    if f.city or f.city_district:
+        stmt = stmt.join(models.Listing.location)
+        if f.city:
+            stmt = stmt.where(models.Location.city == f.city)
+        if f.city_district:
+            stmt = stmt.where(models.Location.city_district == f.city_district)
+    return stmt
+
+
+@app.get("/listings/", response_model=List[schemas.ListingSummary])
+async def read_listings(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    f: ListingFilters = Depends(listing_filters),
+    db: AsyncSession = Depends(get_db),
+):
+    # selectinload: bez niego serializacja listing.location w sesji async rzuca MissingGreenlet
+    stmt = apply_listing_filters(select(models.Listing), f)
+    stmt = (
+        stmt
+        .options(selectinload(models.Listing.location))
+        .order_by(models.Listing.listing_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@app.get("/listings/count", response_model=schemas.ListingCount)
+async def count_listings(
+    f: ListingFilters = Depends(listing_filters),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = apply_listing_filters(select(func.count()).select_from(models.Listing), f)
+    return schemas.ListingCount(count=await db.scalar(stmt))
+
+
+# Podpowiedzi dla autouzupełniania. Trasy pod /listings/, bo /locations/cities złapałoby
+# /locations/{location_id}. Przy dodaniu /listings/{listing_id} deklarować je wcześniej.
+def _prefix_pattern(q: str) -> str:
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"{escaped}%"
+
+
+async def _suggest(db: AsyncSession, column, q: Optional[str], limit: int, city: Optional[str] = None):
+    # Tylko wartości, które mają oferty, więc podpowiedź zawsze daje wyniki.
+    stmt = (
+        select(distinct(column))
+        .select_from(models.Location)
+        .join(models.Location.listings)
+        .where(column.is_not(None))
+    )
+    q = (q or "").strip()
+    if q:
+        stmt = stmt.where(column.ilike(_prefix_pattern(q), escape="\\"))
+    if city:
+        stmt = stmt.where(models.Location.city == city)
+    result = await db.execute(stmt.order_by(column).limit(limit))
+    return result.scalars().all()
+
+
+@app.get("/listings/cities", response_model=List[str])
+async def suggest_cities(
+    q: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _suggest(db, models.Location.city, q, limit)
+
+
+@app.get("/listings/districts", response_model=List[str])
+async def suggest_districts(
+    q: Optional[str] = Query(None, max_length=100),
+    city: Optional[str] = Query(None, max_length=255),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _suggest(
+        db, models.Location.city_district, q, limit, city=(city or "").strip() or None
+    )

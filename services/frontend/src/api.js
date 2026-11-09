@@ -1,3 +1,5 @@
+import { toSearchParams } from './filterQuery.js'
+
 // Thin client for the backend API (proxied under /api, see vite.config.js).
 const BASE = '/api'
 const TOKEN_KEY = 'accessToken'
@@ -83,3 +85,33 @@ export const createLocation = (data) =>
 
 export const deleteLocation = (id) =>
   request(`/locations/${id}`, { method: 'DELETE' })
+
+// Listings (publiczne; signal pozwala przerwać nieaktualne zapytanie)
+const withQuery = (path, params) => {
+  const qs = params.toString()
+  return qs ? `${path}?${qs}` : path
+}
+
+export const listListings = (filters, { signal, limit = 100 } = {}) => {
+  const params = toSearchParams(filters)
+  params.set('limit', String(limit))
+  return request(withQuery('/listings/', params), { signal })
+}
+
+export const countListings = (filters, { signal } = {}) =>
+  request(withQuery('/listings/count', toSearchParams(filters)), { signal })
+
+function suggestionParams(q, limit) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (q.trim()) params.set('q', q.trim())
+  return params
+}
+
+export const suggestCities = (q, { signal, limit = 10 } = {}) =>
+  request(withQuery('/listings/cities', suggestionParams(q, limit)), { signal })
+
+export const suggestDistricts = (q, city, { signal, limit = 10 } = {}) => {
+  const params = suggestionParams(q, limit)
+  if (city?.trim()) params.set('city', city.trim())
+  return request(withQuery('/listings/districts', params), { signal })
+}
