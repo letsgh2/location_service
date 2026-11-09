@@ -1,0 +1,117 @@
+import { useEffect, useState } from 'react'
+import { countListings, listListings } from './api.js'
+import { EMPTY_FILTERS, offersLabel } from './filterQuery.js'
+import { Icon } from './ui.jsx'
+
+const cell = (v) => (v ?? '') === '' ? <span className="empty">—</span> : v
+const fmt = (n, suffix) => (n == null ? null : `${n.toLocaleString('pl-PL')} ${suffix}`)
+
+export default function ListingsView({ onLogout, onShowLocations }) {
+  const [filters] = useState(EMPTY_FILTERS)
+  const [rows, setRows] = useState([])
+  const [count, setCount] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const { signal } = controller
+    setLoading(true)
+    Promise.all([listListings(filters, { signal }), countListings(filters, { signal })])
+      .then(([items, { count }]) => {
+        setRows(items)
+        setCount(count)
+        setError(null)
+      })
+      .catch((e) => {
+        if (e.name !== 'AbortError') setError(`Nie udało się pobrać ofert: ${e.message}`)
+      })
+      .finally(() => {
+        if (!signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [filters])
+
+  return (
+    <div className="container">
+      <header className="page-header">
+        <div>
+          <div className="eyebrow">Ogłoszenia</div>
+          <h1>Oferty</h1>
+          <p className="subtitle">Przeglądaj oferty i zawężaj je filtrami.</p>
+        </div>
+        <div className="toolbar">
+          <button type="button" className="btn btn-ghost" onClick={onShowLocations}>
+            Lokalizacje
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onLogout}>
+            Wyloguj
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className="alert" role="alert">
+          {error}
+        </div>
+      )}
+
+      <section className="card">
+        <div className="card-head tight">
+          <h2 className="card-title">Lista ofert</h2>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th className="no-sort">ID</th>
+                <th className="no-sort">Pokoje</th>
+                <th className="no-sort">Metraż</th>
+                <th className="no-sort">Cena</th>
+                <th className="no-sort">Cena/m²</th>
+                <th className="no-sort">Miasto</th>
+                <th className="no-sort">Dzielnica</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="loading-cell">Ładowanie…</td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="empty-state">
+                      <Icon name="search" size={40} strokeWidth={1.5} />
+                      <strong>Brak ofert</strong>
+                      Zmień lub wyczyść filtry.
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                rows.map((r) => (
+                  <tr key={r.listing_id}>
+                    <td>
+                      <span className="id-badge">#{r.listing_id}</span>
+                    </td>
+                    <td>{cell(r.rooms)}</td>
+                    <td>{cell(fmt(r.area, 'm²'))}</td>
+                    <td>{cell(fmt(r.price_total_zl, 'zł'))}</td>
+                    <td>{cell(fmt(r.price_sqm_zl, 'zł'))}</td>
+                    <td>{cell(r.location?.city)}</td>
+                    <td>{cell(r.location?.city_district)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="table-foot">
+          <span aria-live="polite" data-testid="results-count">
+            {count === null ? '' : `Znaleziono ${offersLabel(count)}`}
+          </span>
+        </div>
+      </section>
+    </div>
+  )
+}
