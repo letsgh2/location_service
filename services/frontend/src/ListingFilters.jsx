@@ -1,5 +1,7 @@
+import { suggestCities, suggestDistricts } from './api.js'
 import { EMPTY_FILTERS, RANGES, hasActiveFilters } from './filterQuery.js'
 import { Field } from './ui.jsx'
+import { useSuggestions } from './useSuggestions.js'
 
 export const ROOM_OPTIONS = [1, 2, 3, 4, 5]
 
@@ -8,6 +10,13 @@ const GRID = { gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }
 // Kontrolowany panel filtrów: stan trzyma rodzic (ListingsView).
 export default function ListingFilters({ value, onChange, errors = {} }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value })
+  const cities = useSuggestions(suggestCities, value.city)
+  // Dzielnice zawężone wybranym miastem.
+  const districts = useSuggestions(
+    (q, opts) => suggestDistricts(q, value.city, opts),
+    value.city_district,
+    [value.city],
+  )
 
   function toggleRoom(room) {
     const rooms = value.rooms.includes(room)
@@ -57,7 +66,35 @@ export default function ListingFilters({ value, onChange, errors = {} }) {
               invalid={Boolean(errors[max])}
             />,
           ])}
+          <Field
+            id="f-city"
+            label="Miasto"
+            icon="city"
+            placeholder="np. Kraków"
+            list="f-city-options"
+            value={value.city}
+            onChange={set('city')}
+          />
+          <Field
+            id="f-city_district"
+            label="Dzielnica"
+            icon="district"
+            placeholder="np. Podgórze"
+            list="f-district-options"
+            value={value.city_district}
+            onChange={set('city_district')}
+          />
         </div>
+        <datalist id="f-city-options" data-testid="city-options">
+          {cities.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        <datalist id="f-district-options" data-testid="district-options">
+          {districts.map((d) => (
+            <option key={d} value={d} />
+          ))}
+        </datalist>
         <div className="field" role="group" aria-label="Liczba pokoi" style={{ marginTop: 14 }}>
           <label>Liczba pokoi</label>
           <div className="toolbar">
