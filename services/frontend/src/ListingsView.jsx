@@ -1,23 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { countListings, listListings } from './api.js'
-import { EMPTY_FILTERS, offersLabel } from './filterQuery.js'
+import { EMPTY_FILTERS, offersLabel, validateFilters } from './filterQuery.js'
+import ListingFilters from './ListingFilters.jsx'
 import { Icon } from './ui.jsx'
 
 const cell = (v) => (v ?? '') === '' ? <span className="empty">—</span> : v
+export const DEBOUNCE_MS = 300
+
 const fmt = (n, suffix) => (n == null ? null : `${n.toLocaleString('pl-PL')} ${suffix}`)
 
 export default function ListingsView({ onLogout, onShowLocations }) {
-  const [filters] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  // Zapytania idą dopiero po chwili bez zmian w polach; reset działa od razu.
+  const [applied, setApplied] = useState(EMPTY_FILTERS)
   const [rows, setRows] = useState([])
   const [count, setCount] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const errors = useMemo(() => validateFilters(filters), [filters])
+  const valid = Object.keys(errors).length === 0
+
   useEffect(() => {
+    if (!valid) return
+    if (filters === EMPTY_FILTERS) {
+      setApplied(filters)
+      return
+    }
+    const timer = setTimeout(() => setApplied(filters), DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [filters, valid])
+
+  useEffect(() => {
+    // AbortController: zmiana filtrów przerywa poprzednie zapytania (brak wyścigu odpowiedzi).
     const controller = new AbortController()
     const { signal } = controller
     setLoading(true)
-    Promise.all([listListings(filters, { signal }), countListings(filters, { signal })])
+    Promise.all([listListings(applied, { signal }), countListings(applied, { signal })])
       .then(([items, { count }]) => {
         setRows(items)
         setCount(count)
@@ -30,7 +49,7 @@ export default function ListingsView({ onLogout, onShowLocations }) {
         if (!signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [filters])
+  }, [applied])
 
   return (
     <div className="container">
@@ -55,6 +74,8 @@ export default function ListingsView({ onLogout, onShowLocations }) {
           {error}
         </div>
       )}
+
+      <ListingFilters value={filters} onChange={setFilters} errors={errors} />
 
       <section className="card">
         <div className="card-head tight">
