@@ -40,3 +40,7 @@ dist/
 *.swp
 .DS_Store
 coverage.xml
+
+# Mutation testing (mutmut)
+mutants/
+mutation-report/

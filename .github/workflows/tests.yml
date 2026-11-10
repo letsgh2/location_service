@@ -1,6 +1,8 @@
 # .github/workflows/tests.yml
 # Uruchamia testy backendu (pytest) z pomiarem pokrycia kodu przy każdym push i pull request.
 # Pokrycie (linie + gałęzie) poniżej 80% kończy workflow błędem.
+# Po zielonych testach job `mutation` uruchamia testy mutacyjne (mutmut);
+# mutation score poniżej 60% kończy workflow błędem.
 name: Tests
 
 on:
@@ -40,5 +42,55 @@ jobs:
         with:
           name: coverage-report
           path: services/backend/coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  mutation:
+    needs: backend-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MIN_MUTATION_SCORE: "60"
+    defaults:
+      run:
+        working-directory: services/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: services/backend/pyproject.toml
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+
+      # mutmut zwraca 0 także przy przeżytych mutantach — o wyniku decyduje krok "Check mutation score".
+      - name: Run mutation tests
+        run: mutmut run --max-children "$(nproc)"
+
+      - name: Build mutation report
+        if: always()
+        run: |
+          mkdir -p mutation-report
+          mutmut export-cicd-stats
+          cp mutants/mutmut-cicd-stats.json mutation-report/
+          mutmut results --all true > mutation-report/results-all.txt
+          mutmut results > mutation-report/surviving-mutants.txt
+          # diff każdego niezabitego mutanta, żeby było wiadomo, czego testy nie wykrywają
+          grep -oE '^\s*[^ :]+' mutation-report/surviving-mutants.txt | while read -r m; do
+            echo "### $m"; mutmut show "$m"; echo
+          done > mutation-report/surviving-mutants.diff
+
+      - name: Check mutation score
+        run: python scripts/mutation_score.py --min-score "$MIN_MUTATION_SCORE"
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: services/backend/mutation-report/
           if-no-files-found: warn
           retention-days: 14

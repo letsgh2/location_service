@@ -15,6 +15,8 @@ python -m sql_app.init_db        # create/upgrade DB: runs `alembic upgrade head
 uvicorn main:app --reload        # run the API (docs at /docs)
 pip install -e ".[dev]"          # test deps: pytest, pytest-asyncio, httpx
 pytest -q                        # run tests (in-memory SQLite, see tests/conftest.py; `make_listing` fixture builds a Listing with its required FKs)
+mutmut run && mutmut export-cicd-stats && python scripts/mutation_score.py --min-score 60   # mutation testing (config: [tool.mutmut] in pyproject.toml; output in mutants/)
+mutmut results; mutmut show <mutant>                                                       # list surviving mutants / show the diff of one
 
 alembic revision --autogenerate -m "message"   # generate a migration after changing sql_app/models.py
 alembic upgrade head
