@@ -8,6 +8,7 @@ Mutanty "no tests" i "survived" obniżają wynik. Gdy ustawione jest GITHUB_STEP
 dopisuje tabelę z wynikiem do podsumowania joba w GitHub Actions.
 Kod wyjścia 1, gdy score < progu albo brak danych.
 """
+
 import argparse
 import json
 import os
@@ -25,19 +26,32 @@ def mutation_score(stats: dict) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--stats", type=Path, default=Path("mutants/mutmut-cicd-stats.json"))
+    parser.add_argument(
+        "--stats", type=Path, default=Path("mutants/mutmut-cicd-stats.json")
+    )
     parser.add_argument("--min-score", type=float, default=60.0)
     args = parser.parse_args()
 
     if not args.stats.exists():
-        print(f"::error::Brak pliku {args.stats} — czy uruchomiono `mutmut export-cicd-stats`?")
+        print(
+            f"::error::Brak pliku {args.stats} — czy uruchomiono `mutmut export-cicd-stats`?"
+        )
         return 1
 
     stats = json.loads(args.stats.read_text())
     score = mutation_score(stats)
     passed = score >= args.min_score
 
-    rows = ["killed", "timeout", "survived", "no_tests", "suspicious", "skipped", "segfault", "total"]
+    rows = [
+        "killed",
+        "timeout",
+        "survived",
+        "no_tests",
+        "suspicious",
+        "skipped",
+        "segfault",
+        "total",
+    ]
     lines = [
         f"## Mutation testing: {score:.1f}% {'✅' if passed else '❌'} (próg {args.min_score:.0f}%)",
         "",
@@ -54,7 +68,9 @@ def main() -> int:
             f.write(report + "\n")
 
     if not passed:
-        print(f"::error::Mutation score {score:.1f}% jest poniżej progu {args.min_score:.0f}%")
+        print(
+            f"::error::Mutation score {score:.1f}% jest poniżej progu {args.min_score:.0f}%"
+        )
         return 1
     print(f"Mutation score {score:.1f}% >= {args.min_score:.0f}% — OK")
     return 0

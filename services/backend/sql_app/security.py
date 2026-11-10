@@ -1,4 +1,5 @@
 """Hashowanie haseł (bcrypt) i tokeny JWT (HS256)."""
+
 from datetime import datetime, timedelta, timezone
 
 import bcrypt

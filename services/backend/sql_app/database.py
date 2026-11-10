@@ -1,4 +1,4 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
 from config import settings
@@ -7,14 +7,12 @@ from config import settings
 engine = create_async_engine(
     settings.database_url,
     connect_args={"check_same_thread": False},
-    echo=True  # Set to False in production
+    echo=True,  # Set to False in production
 )
 
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
+    engine, class_=AsyncSession, expire_on_commit=False
 )
 
 # Base class for models
@@ -28,4 +26,3 @@ async def get_db():
             yield session
         finally:
             await session.close()
-

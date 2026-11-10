@@ -1,11 +1,12 @@
 """Wspólne fixtures: baza SQLite in-memory + klient HTTP podpięty pod aplikację."""
+
 import os
 
 # Ustawienie przed importem aplikacji: config.Settings czyta SECRET_KEY przy imporcie.
 os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production"
 
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -30,21 +31,27 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def db(engine) -> AsyncSession:
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
     async with session_factory() as session:
         yield session
 
 
 @pytest_asyncio.fixture
 async def client(engine):
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     async def override_get_db():
         async with session_factory() as session:
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield c
     app.dependency_overrides.clear()
 

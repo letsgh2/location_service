@@ -8,6 +8,7 @@ Użycie (z katalogu services/backend):
     venv/bin/python scripts/gen_model_docs.py          # zapisuje docs/schema.md
     venv/bin/python scripts/gen_model_docs.py --check  # kod 1, gdy plik jest nieaktualny
 """
+
 from __future__ import annotations
 
 import os
@@ -28,8 +29,8 @@ sys.path.insert(0, str(BACKEND_DIR))
 from sqlalchemy import Column  # noqa: E402
 from sqlalchemy.orm import Mapper  # noqa: E402
 
-from sql_app.database import Base  # noqa: E402
 import sql_app.models  # noqa: E402,F401  (rejestruje modele w Base.metadata)
+from sql_app.database import Base  # noqa: E402
 
 HEADER = (
     "<!-- PLIK GENEROWANY AUTOMATYCZNIE przez services/backend/scripts/gen_model_docs.py -->\n"
@@ -123,7 +124,9 @@ def _model_section(m: Mapper) -> list[str]:
         for r in rels:
             direction = DIRECTION_PL.get(r.direction.name, r.direction.name.lower())
             bp = f", `back_populates={r.back_populates}`" if r.back_populates else ""
-            lines.append(f"- `{r.key}` → **{r.mapper.class_.__name__}** ({direction}{bp})")
+            lines.append(
+                f"- `{r.key}` → **{r.mapper.class_.__name__}** ({direction}{bp})"
+            )
     lines.append("")
     return lines
 
@@ -163,7 +166,10 @@ def main(argv: list[str]) -> int:
         if old == new:
             print(f"{rel}: aktualny ({n} modeli)")
             return 0
-        print(f"{rel}: NIEAKTUALNY. Uruchom: python scripts/gen_model_docs.py", file=sys.stderr)
+        print(
+            f"{rel}: NIEAKTUALNY. Uruchom: python scripts/gen_model_docs.py",
+            file=sys.stderr,
+        )
         return 1
 
     if old == new:

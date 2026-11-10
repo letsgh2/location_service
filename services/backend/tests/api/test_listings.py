@@ -62,14 +62,19 @@ async def _ids(client, **params):
 
 
 @pytest.mark.parametrize("min_name,max_name,field", RANGES)
-async def test_range_filter_bounds_are_inclusive(client, make_listing, min_name, max_name, field):
+async def test_range_filter_bounds_are_inclusive(
+    client, make_listing, min_name, max_name, field
+):
     low = await make_listing(**{field: 100})
     mid = await make_listing(**{field: 200})
     high = await make_listing(**{field: 300})
 
     assert await _ids(client, **{min_name: 200}) == [mid.listing_id, high.listing_id]
     assert await _ids(client, **{max_name: 200}) == [low.listing_id, mid.listing_id]
-    assert await _ids(client, **{min_name: 150, max_name: 300}) == [mid.listing_id, high.listing_id]
+    assert await _ids(client, **{min_name: 150, max_name: 300}) == [
+        mid.listing_id,
+        high.listing_id,
+    ]
     assert await _ids(client, **{min_name: 200, max_name: 200}) == [mid.listing_id]
 
 
@@ -128,8 +133,13 @@ async def test_city_and_district_exact_match(client, make_listing):
     krowodrza = await make_listing(city="Kraków", city_district="Krowodrza")
     await make_listing(city="Łódź", city_district="Bałuty")
 
-    assert await _ids(client, city="Kraków") == [podgorze.listing_id, krowodrza.listing_id]
-    assert await _ids(client, city="Kraków", city_district="Podgórze") == [podgorze.listing_id]
+    assert await _ids(client, city="Kraków") == [
+        podgorze.listing_id,
+        krowodrza.listing_id,
+    ]
+    assert await _ids(client, city="Kraków", city_district="Podgórze") == [
+        podgorze.listing_id
+    ]
     assert await _ids(client, city="Gdańsk") == []
     assert await _ids(client, city="  ") == await _ids(client)
 
@@ -157,12 +167,16 @@ async def test_count_matches_filtered_list_and_ignores_pagination(client, make_l
         await make_listing(rooms=rooms, city=city, price_total_zl=100000 * rooms)
     params = {"city": "Kraków", "rooms": [2, 3], "price_total_min": 150000}
 
-    count = (await client.get("/listings/count", params={**params, "limit": 1})).json()["count"]
+    count = (await client.get("/listings/count", params={**params, "limit": 1})).json()[
+        "count"
+    ]
 
     assert count == len(await _ids(client, **params, limit=500)) == 2
 
 
 async def test_count_validates_filters(client):
-    response = await client.get("/listings/count", params={"area_min": 80, "area_max": 40})
+    response = await client.get(
+        "/listings/count", params={"area_min": 80, "area_max": 40}
+    )
 
     assert response.status_code == 422

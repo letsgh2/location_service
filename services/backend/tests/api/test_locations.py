@@ -1,6 +1,11 @@
 from sql_app import models
 
-LOCATION = {"city": "Kraków", "street": "Floriańska", "latitude": 50.06, "longitude": 19.94}
+LOCATION = {
+    "city": "Kraków",
+    "street": "Floriańska",
+    "latitude": 50.06,
+    "longitude": 19.94,
+}
 
 
 async def test_create_location(auth_client):
@@ -47,7 +52,9 @@ async def test_delete_location(auth_client):
     response = await auth_client.delete(f"/locations/{created['location_id']}")
 
     assert response.status_code == 204
-    assert (await auth_client.get(f"/locations/{created['location_id']}")).status_code == 404
+    assert (
+        await auth_client.get(f"/locations/{created['location_id']}")
+    ).status_code == 404
 
 
 async def test_delete_location_used_by_listing_returns_409(auth_client, db):

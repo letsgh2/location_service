@@ -1,13 +1,15 @@
-import jwt
 from dataclasses import dataclass
-from sqlalchemy import select, delete, distinct, func
-from sqlalchemy.orm import selectinload
-from fastapi import FastAPI, Depends, HTTPException, Query, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from sql_app.database import get_db
+
+import jwt
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy import delete, distinct, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from sql_app import models, schemas
+from sql_app.database import get_db
 from sql_app.security import (
     create_access_token,
     decode_access_token,
@@ -54,7 +56,9 @@ async def root():
 
 
 # Auth endpoints
-@app.post("/auth/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/auth/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED
+)
 async def register(
     data: schemas.UserCreate,
     db: AsyncSession = Depends(get_db),
@@ -110,21 +114,14 @@ async def create_location(
 
 @app.get("/locations/", response_model=List[schemas.Location])
 async def read_locations(
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
-        select(models.Location).offset(skip).limit(limit)
-    )
+    result = await db.execute(select(models.Location).offset(skip).limit(limit))
     return result.scalars().all()
 
 
 @app.get("/locations/{location_id}", response_model=schemas.Location)
-async def read_location(
-    location_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def read_location(location_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(models.Location).where(models.Location.location_id == location_id)
     )
@@ -279,8 +276,7 @@ async def read_listings(
     # selectinload: bez niego serializacja listing.location w sesji async rzuca MissingGreenlet
     stmt = apply_listing_filters(select(models.Listing), f)
     stmt = (
-        stmt
-        .options(selectinload(models.Listing.location))
+        stmt.options(selectinload(models.Listing.location))
         .order_by(models.Listing.listing_id)
         .offset(skip)
         .limit(limit)
@@ -305,7 +301,9 @@ def _prefix_pattern(q: str) -> str:
     return f"{escaped}%"
 
 
-async def _suggest(db: AsyncSession, column, q: Optional[str], limit: int, city: Optional[str] = None):
+async def _suggest(
+    db: AsyncSession, column, q: Optional[str], limit: int, city: Optional[str] = None
+):
     # Tylko wartości, które mają oferty, więc podpowiedź zawsze daje wyniki.
     stmt = (
         select(distinct(column))

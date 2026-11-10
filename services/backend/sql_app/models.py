@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, Float, Date, ForeignKey, Boolean
+from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+
 from .database import Base
 
 
@@ -93,4 +93,3 @@ class Listing(Base):
     building = relationship("Building", back_populates="listings")
     owner = relationship("Owner", back_populates="listings")
     features = relationship("Features", back_populates="listings")
-

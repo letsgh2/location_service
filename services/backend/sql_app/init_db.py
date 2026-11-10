@@ -6,10 +6,12 @@ więc skrypt po prostu wykonuje `alembic upgrade head`.
 Bezpieczny do wielokrotnego uruchamiania - migracje, które już zostały
 zastosowane, są pomijane.
 """
+
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
