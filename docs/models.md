@@ -4,7 +4,7 @@
 
 System zawiera 5 głównych modeli danych:
 
-1. **Location** - informacje geograficzne i adresowe (8 pól)
+1. **Location** - informacje geograficzne i adresowe (9 pól, w tym opcjonalny opis `description`)
 2. **Building** - informacje techniczne o budynku (4 pola)
 3. **Owner** - dane kontaktowe właściciela (5 pól)
 4. **Features** - cechy i wyposażenie nieruchomości (7 pól)

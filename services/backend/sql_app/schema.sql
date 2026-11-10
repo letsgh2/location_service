@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS location (
     street          TEXT,
     full_address    TEXT,
     latitude        REAL,
-    longitude       REAL
+    longitude       REAL,
+    description     TEXT
 );
 
 -- =========================
