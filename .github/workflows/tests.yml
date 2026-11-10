@@ -1,6 +1,6 @@
-# .github/workflows/tests.yml
 # Uruchamia testy backendu (pytest) z pomiarem pokrycia kodu przy każdym push i pull request.
 # Pokrycie (linie + gałęzie) poniżej 80% kończy workflow błędem.
+# Raport coverage.xml trafia do Codecov (komentarz w PR, wymagany status codecov/patch >= 90%).
 # Po zielonych testach job `mutation` uruchamia testy mutacyjne (mutmut);
 # mutation score poniżej 60% kończy workflow błędem.
 name: Tests
@@ -44,6 +44,19 @@ jobs:
           path: services/backend/coverage.xml
           if-no-files-found: warn
           retention-days: 14
+
+      # Wysyła coverage.xml do Codecov, który publikuje komentarz w PR oraz statusy
+      # codecov/project i codecov/patch (progi w codecov.yml w katalogu głównym repo).
+      # Krok `uses` nie dziedziczy working-directory, więc ścieżka jest od korzenia repo.
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: services/backend/coverage.xml
+          flags: backend
+          name: backend-py3.11
+          fail_ci_if_error: true
 
   mutation:
     needs: backend-tests

@@ -1,0 +1,47 @@
+# Konfiguracja Codecov (https://docs.codecov.com/docs/codecov-yaml).
+# Raport wysyła krok "Upload coverage to Codecov" w .github/workflows/tests.yml.
+
+codecov:
+  # Statusy Codecov pojawiają się dopiero, gdy wszystkie pozostałe checki CI są zielone.
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  status:
+    # Pokrycie całego projektu nie może spaść względem gałęzi bazowej (tolerancja 1 pp).
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        flags:
+          - backend
+    # Pokrycie zmienionych/dodanych linii w PR musi wynosić co najmniej 90%.
+    # Ten status (codecov/patch) jest wymaganym checkiem w branch protection gałęzi main.
+    patch:
+      default:
+        target: 90%
+        threshold: 0%
+        flags:
+          - backend
+
+flags:
+  backend:
+    paths:
+      - services/backend/
+    carryforward: true
+
+ignore:
+  - "services/backend/tests/**"
+  - "services/backend/alembic/**"
+  - "services/backend/scripts/**"
+
+comment:
+  layout: "condensed_header, diff, flags, files, footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
