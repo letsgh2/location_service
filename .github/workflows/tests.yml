@@ -26,3 +26,14 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  ci-ok:
+    name: ci-ok
+    needs: [backend-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful test jobs
+        env:
+          BACKEND_TESTS_RESULT: ${{ needs.backend-tests.result }}
+        run: test "$BACKEND_TESTS_RESULT" = "success"
