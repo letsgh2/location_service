@@ -39,3 +39,4 @@ dist/
 .vscode/
 *.swp
 .DS_Store
+coverage.xml

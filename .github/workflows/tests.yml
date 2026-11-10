@@ -1,5 +1,6 @@
 # .github/workflows/tests.yml
-# Uruchamia testy backendu (pytest) przy każdym push i pull request.
+# Uruchamia testy backendu (pytest) z pomiarem pokrycia kodu przy każdym push i pull request.
+# Pokrycie (linie + gałęzie) poniżej 80% kończy workflow błędem.
 name: Tests
 
 on:
@@ -24,5 +25,20 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -e ".[dev]"
 
-      - name: Run tests
-        run: pytest -q
+      - name: Run tests with coverage
+        run: >
+          pytest -q
+          --cov
+          --cov-branch
+          --cov-report=term-missing
+          --cov-report=xml:coverage.xml
+          --cov-fail-under=80
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: services/backend/coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
